@@ -26,11 +26,7 @@ func chromeQUICClientHelloSpec(alpn []string) *utls.ClientHelloSpec {
 	}
 	return &utls.ClientHelloSpec{
 		// No GREASE suite here, unlike the TCP hello.
-		CipherSuites: []uint16{
-			utls.TLS_AES_128_GCM_SHA256,
-			utls.TLS_AES_256_GCM_SHA384,
-			utls.TLS_CHACHA20_POLY1305_SHA256,
-		},
+		CipherSuites:       chromeCipherSuites(hasAESGCMHardwareSupport),
 		CompressionMethods: []byte{0x00},
 		Extensions: utls.ShuffleChromeTLSExtensions([]utls.TLSExtension{
 			&utls.SNIExtension{},
