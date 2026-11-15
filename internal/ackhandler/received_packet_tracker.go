@@ -94,22 +94,58 @@ type appDataReceivedPacketTracker struct {
 	ackElicitingPacketsReceivedSinceLastAck int
 	ackAlarm                                monotime.Time
 
+	peer peerPackets
+
 	logger utils.Logger
 }
 
-func newAppDataReceivedPacketTracker(logger utils.Logger) *appDataReceivedPacketTracker {
+func newAppDataReceivedPacketTracker(logger utils.Logger, connStats *utils.ConnectionStats) *appDataReceivedPacketTracker {
 	h := &appDataReceivedPacketTracker{
 		receivedPacketTracker: *newReceivedPacketTracker(),
 		maxAckDelay:           protocol.MaxAckDelay,
+		peer:                  peerPackets{stats: connStats},
 		logger:                logger,
 	}
 	return h
+}
+
+// peerPackets counts the packets of the peer in the Application Data space for ConnectionStats
+// (podkop-net): each new one, and the packet numbers between the smallest and the largest received
+// that did not come. A packet that comes out of order takes its gap back. A peer skips a packet
+// number now and then (against optimistic ACKs, a few per connection: see
+// newSkippingPacketNumberGenerator), and those count as missing too.
+type peerPackets struct {
+	stats             *utils.ConnectionStats
+	any               bool
+	smallest, largest protocol.PacketNumber
+}
+
+// received counts a packet that was not received before.
+func (p *peerPackets) received(pn protocol.PacketNumber) {
+	if p.stats == nil {
+		return
+	}
+	p.stats.PeerPacketsReceived.Add(1)
+	switch {
+	case !p.any:
+		p.any = true
+		p.smallest, p.largest = pn, pn
+	case pn > p.largest:
+		p.stats.PeerPacketsMissing.Add(int64(pn - p.largest - 1))
+		p.largest = pn
+	case pn < p.smallest:
+		p.stats.PeerPacketsMissing.Add(int64(p.smallest - pn - 1))
+		p.smallest = pn
+	default:
+		p.stats.PeerPacketsMissing.Add(-1)
+	}
 }
 
 func (h *appDataReceivedPacketTracker) ReceivedPacket(pn protocol.PacketNumber, ecn protocol.ECN, rcvTime monotime.Time, ackEliciting bool) error {
 	if err := h.receivedPacketTracker.ReceivedPacket(pn, ecn, ackEliciting); err != nil {
 		return err
 	}
+	h.peer.received(pn)
 	if pn >= h.largestObserved {
 		h.largestObserved = pn
 		h.largestObservedRcvdTime = rcvTime

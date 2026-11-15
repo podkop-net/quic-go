@@ -569,7 +569,7 @@ func (c *Conn) preSetup() {
 	c.lastPacketReceivedTime = now
 	c.creationTime = now
 
-	c.receivedPacketHandler = *ackhandler.NewReceivedPacketHandler(c.logger)
+	c.receivedPacketHandler = *ackhandler.NewReceivedPacketHandler(c.logger, &c.connStats)
 
 	c.datagramQueue = newDatagramQueue(c.scheduleSending, c.logger)
 	c.connState.Version = c.version
@@ -851,6 +851,17 @@ type ConnectionStats struct {
 	// (does not monotonically increase, because packets that are declared lost
 	// can subsequently be received).
 	PacketsLost uint64
+
+	// PeerPacketsReceived is the number of 1-RTT packets received from the peer,
+	// each counted once.
+	PeerPacketsReceived uint64
+	// PeerPacketsMissing is the number of the peer's 1-RTT packet numbers, between
+	// the smallest and the largest received, that were not received: packets lost
+	// on the way, packets still to come out of order, and the few packet numbers
+	// a peer skips. A packet that comes late is taken back, so it does not grow
+	// monotonically. Lost packets of the peer as a share:
+	// PeerPacketsMissing / (PeerPacketsReceived + PeerPacketsMissing).
+	PeerPacketsMissing uint64
 }
 
 func (c *Conn) ConnectionStats() ConnectionStats {
@@ -866,6 +877,9 @@ func (c *Conn) ConnectionStats() ConnectionStats {
 		PacketsReceived: c.connStats.PacketsReceived.Load(),
 		BytesLost:       c.connStats.BytesLost.Load(),
 		PacketsLost:     c.connStats.PacketsLost.Load(),
+
+		PeerPacketsReceived: c.connStats.PeerPacketsReceived.Load(),
+		PeerPacketsMissing:  uint64(max(c.connStats.PeerPacketsMissing.Load(), 0)),
 	}
 }
 

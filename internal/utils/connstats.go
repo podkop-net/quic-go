@@ -11,4 +11,9 @@ type ConnectionStats struct {
 	PacketsReceived atomic.Uint64
 	BytesLost       atomic.Uint64
 	PacketsLost     atomic.Uint64
+
+	// the 1-RTT packets of the peer (podkop-net): each received one once, and the packet
+	// numbers below the largest received that did not come
+	PeerPacketsReceived atomic.Uint64
+	PeerPacketsMissing  atomic.Int64
 }
